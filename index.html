@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GameZone Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+  :root {
+    --bg: #0d0d1a;
+    --surface: #161628;
+    --surface2: #1e1e38;
+    --border: #2a2a50;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --accent3: #f59e0b;
+    --green: #10b981;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --radius: 12px;
+    --font-game: 'Press Start 2P', monospace;
+    --font-ui: 'Nunito', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── SETUP SCREEN ── */
+  #setup-screen {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .setup-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    padding: 40px;
+    width: 360px;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(124,58,237,0.3);
+  }
+  .setup-card .logo {
+    font-family: var(--font-game);
+    font-size: 18px;
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--accent);
+    margin-bottom: 8px;
+    line-height: 1.8;
+  }
+  .setup-card p { color: var(--text-muted); margin-bottom: 28px; font-size: 14px; }
+  .setup-card input {
+    width: 100%;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    outline: none;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+  .setup-card input:focus { border-color: var(--accent); }
+  .setup-card input::placeholder { color: var(--text-muted); font-weight: 400; }
+  .btn-join {
+    width: 100%;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    color: #fff;
+    font-family: var(--font-ui);
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .btn-join:hover { background: #6d28d9; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(124,58,237,0.5); }
+  .firebase-note {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: left;
+    max-width: 360px;
+    line-height: 1.6;
+  }
+  .firebase-note a { color: var(--accent2); }
+
+  /* ── MAIN LAYOUT ── */
+  #app { display: none; flex-direction: column; height: 100vh; }
+  #app.visible { display: flex; }
+
+  /* Header */
+  header {
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    padding: 10px 20px;
+    display: flex; align-items: center; gap: 16px;
+    flex-shrink: 0;
+  }
+  header .logo { font-family: var(--font-game); font-size: 11px; color: var(--accent); text-shadow: 0 0 10px var(--accent); }
+  header .user-badge {
+    margin-left: auto;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent2);
+  }
+  .online-count {
+    background: var(--surface2);
+    border: 1px solid var(--green);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: var(--green);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .online-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* Main body */
+  .main-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 220px;
+    background: var(--surface);
+    border-right: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .sidebar-section {
+    padding: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .game-btn {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 9px 10px;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    margin-bottom: 4px;
+  }
+  .game-btn:hover { background: var(--surface2); border-color: var(--border); }
+  .game-btn.active { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+  .game-btn .icon { font-size: 16px; }
+  .online-users-list { overflow-y: auto; flex: 1; padding: 14px; }
+  .online-user {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 5px 0;
+    color: var(--text);
+  }
+  .online-user .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+
+  /* Content area */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Chat panel */
+  #chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .chat-messages::-webkit-scrollbar { width: 6px; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .message {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    animation: fadeUp 0.2s ease;
+  }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .message .avatar {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    font-weight: 800;
+    flex-shrink: 0;
+    font-family: var(--font-ui);
+  }
+  .message .body {}
+  .message .meta { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+  .message .meta .username { font-weight: 800; margin-right: 6px; }
+  .message .text {
+    background: var(--surface2);
+    border-radius: 4px 12px 12px 12px;
+    padding: 8px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    display: inline-block;
+    max-width: 480px;
+    word-break: break-word;
+  }
+  .message.own .text {
+    background: var(--accent);
+    border-radius: 12px 4px 12px 12px;
+  }
+  .message.system .text {
+    background: transparent;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 12px;
+  }
+  .chat-input-row {
+    padding: 12px 16px;
+    border-top: 2px solid var(--border);
+    display: flex; gap: 10px;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .chat-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .chat-input:focus { border-color: var(--accent); }
+  .send-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    padding: 11px 20px;
+    color: #fff;
+    font-family: var(--font-ui);
+    font-weight: 800;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .send-btn:hover { background: #6d28d9; }
+
+  /* Game panels */
+  .game-panel {
+    display: none;
+    height: 100%;
+    flex-direction: column;
+  }
+  .game-panel.active { display: flex; }
+  .game-header {
+    padding: 14px 20px;
+    border-bottom: 2px solid var(--border);
+    display: flex; align-items: center; gap: 14px;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .game-title {
+    font-family: var(--font-game);
+    font-size: 12px;
+    color: var(--accent3);
+  }
+  .game-status {
+    font-size: 13px; font-weight: 600;
+    color: var(--text-muted);
+  }
+  .game-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+    overflow: auto;
+  }
+  .btn {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 20px;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #6d28d9; }
+  .btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+  /* ── TIC TAC TOE ── */
+  .ttt-board {
+    display: grid;
+    grid-template-columns: repeat(3, 100px);
+    grid-template-rows: repeat(3, 100px);
+    gap: 6px;
+  }
+  .ttt-cell {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-game);
+    font-size: 30px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .ttt-cell:hover:not(.taken) { border-color: var(--accent); background: var(--surface); }
+  .ttt-cell.x { color: var(--accent2); }
+  .ttt-cell.o { color: var(--accent3); }
+  .ttt-cell.win { border-color: var(--green); background: rgba(16,185,129,0.1); }
+  .ttt-cell.taken { cursor: default; }
+
+  /* ── CONNECT 4 ── */
+  .c4-board {
+    display: inline-grid;
+    grid-template-columns: repeat(7, 60px);
+    grid-template-rows: repeat(6, 60px);
+    gap: 5px;
+    background: #1a1a3e;
+    border: 3px solid var(--accent);
+    border-radius: 14px;
+    padding: 10px;
+  }
+  .c4-cell {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .c4-cell.p1 { background: #ef4444; border-color: #dc2626; box-shadow: 0 0 12px rgba(239,68,68,0.5); }
+  .c4-cell.p2 { background: #f59e0b; border-color: #d97706; box-shadow: 0 0 12px rgba(245,158,11,0.5); }
+  .c4-cell.win { box-shadow: 0 0 20px #fff; }
+  .c4-col-btns {
+    display: grid;
+    grid-template-columns: repeat(7, 60px);
+    gap: 5px;
+    padding: 0 10px;
+  }
+  .c4-col-btn {
+    width: 60px; height: 30px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .c4-col-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── BATTLESHIP ── */
+  .bs-container {
+    display: flex; gap: 30px; flex-wrap: wrap; justify-content: center;
+  }
+  .bs-grid-wrapper { text-align: center; }
+  .bs-grid-title { font-size: 12px; font-weight: 800; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+  .bs-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 38px);
+    grid-template-rows: repeat(10, 38px);
+    gap: 3px;
+  }
+  .bs-cell {
+    width: 38px; height: 38px;
+    border-radius: 5px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.1s;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .bs-cell:hover { border-color: var(--accent2); }
+  .bs-cell.ship { background: #334155; }
+  .bs-cell.hit { background: var(--red); border-color: #dc2626; }
+  .bs-cell.miss { background: #1e3a5f; border-color: #2563eb; }
+  .bs-cell.sunk { background: #7f1d1d; }
+  .bs-setup-ship {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    background: var(--surface2);
+    transition: all 0.15s;
+  }
+  .bs-setup-ship:hover { border-color: var(--accent2); }
+  .bs-setup-ship.selected { border-color: var(--accent2); color: var(--accent2); }
+  .bs-setup-ship.placed { opacity: 0.5; }
+
+  /* ── WORD DUEL ── */
+  .wd-display {
+    font-family: var(--font-game);
+    font-size: 28px;
+    color: var(--accent2);
+    letter-spacing: 12px;
+    text-align: center;
+    min-height: 50px;
+  }
+  .wd-guesses {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    justify-content: center;
+    max-width: 480px;
+  }
+  .wd-guess-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .wd-guess-chip.correct { border-color: var(--green); color: var(--green); }
+  .wd-guess-chip.wrong { border-color: var(--red); color: var(--red); }
+  .wd-input-row { display: flex; gap: 10px; }
+  .wd-input {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 16px; font-weight: 700;
+    text-transform: uppercase;
+    outline: none; width: 160px; text-align: center;
+    transition: border-color 0.2s;
+  }
+  .wd-input:focus { border-color: var(--accent2); }
+
+  /* ── ROCK PAPER SCISSORS ── */
+  .rps-choices { display: flex; gap: 16px; }
+  .rps-btn {
+    width: 100px; height: 100px;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    font-size: 44px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .rps-btn:hover { border-color: var(--accent3); transform: scale(1.1); }
+  .rps-btn.selected { border-color: var(--accent3); box-shadow: 0 0 20px rgba(245,158,11,0.4); transform: scale(1.05); }
+  .rps-result { font-size: 22px; font-weight: 800; text-align: center; min-height: 36px; }
+  .rps-vs { display: flex; gap: 30px; align-items: center; font-size: 40px; }
+  .rps-score { font-size: 24px; font-weight: 800; color: var(--accent3); font-family: var(--font-game); }
+
+  /* ── TYPERACER ── */
+  .tr-prompt {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    font-size: 18px;
+    line-height: 1.8;
+    max-width: 600px;
+    letter-spacing: 0.5px;
+  }
+  .tr-prompt .tr-done { color: var(--green); }
+  .tr-prompt .tr-cursor { border-left: 2px solid var(--accent2); animation: blink 0.8s step-end infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  .tr-prompt .tr-error { background: rgba(239,68,68,0.3); border-radius: 2px; }
+  .tr-wpm { font-family: var(--font-game); font-size: 18px; color: var(--accent3); }
+  .tr-bar-wrap { width: 100%; max-width: 600px; }
+  .tr-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; font-weight: 700; }
+  .tr-bar-bg { height: 10px; background: var(--surface2); border-radius: 5px; overflow: hidden; }
+  .tr-bar { height: 100%; border-radius: 5px; transition: width 0.3s; }
+  .tr-bar.p1 { background: var(--accent); }
+  .tr-bar.p2 { background: var(--accent3); }
+
+  /* ── LOBBY ── */
+  .lobby-view { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; max-width: 420px; }
+  .lobby-room {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%;
+    transition: border-color 0.15s;
+  }
+  .lobby-room:hover { border-color: var(--accent); }
+  .lobby-room-info .name { font-weight: 800; font-size: 14px; }
+  .lobby-room-info .players { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Notification toast */
+  #toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--surface2);
+    border: 2px solid var(--accent3);
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: 13px; font-weight: 700;
+    color: var(--accent3);
+    z-index: 200;
+    display: none;
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .sidebar { width: 56px; }
+    .sidebar .sidebar-label, .game-btn span:not(.icon) { display: none; }
+    .game-btn { justify-content: center; }
+    .c4-board { grid-template-columns: repeat(7, 42px); grid-template-rows: repeat(6, 42px); }
+    .c4-cell { width: 42px; height: 42px; }
+    .c4-col-btns { grid-template-columns: repeat(7, 42px); }
+    .c4-col-btn { width: 42px; }
+    .ttt-board { grid-template-columns: repeat(3, 85px); grid-template-rows: repeat(3, 85px); }
+    .ttt-cell { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Setup Screen -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <div class="logo">GAME<br>ZONE</div>
+    <p>Chat, play, and compete in real-time!</p>
+    <input type="text" id="username-input" placeholder="Enter your username..." maxlength="18" autocomplete="off">
+    <button class="btn-join" onclick="joinApp()">▶ JOIN THE ZONE</button>
+  </div>
+  <div class="firebase-note">
+    ⚡ <strong>Real-time multiplayer requires Firebase.</strong><br>
+    1. Create a free project at <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a><br>
+    2. Enable <strong>Realtime Database</strong> (test mode)<br>
+    3. Replace <code>firebaseConfig</code> in the &lt;script&gt; at the bottom of this file.<br>
+    Without Firebase, all features work locally in your own tab (great for testing!).
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <header>
+    <div class="logo">GAMEZONE</div>
+    <div class="online-count"><div class="online-dot"></div><span id="online-count-val">1</span> online</div>
+    <div class="user-badge">👤 <span id="header-username"></span></div>
+  </header>
+
+  <div class="main-body">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Rooms</div>
+        <button class="game-btn active" onclick="switchPanel('chat-panel')" id="btn-chat">
+          <span class="icon">💬</span><span>Global Chat</span>
+        </button>
+        <button class="game-btn" onclick="switchPanel('ttt-panel')" id="btn-ttt">
+          <span class="icon">⭕</span><span>Tic Tac Toe</span>
+        </button>
+        <button class="game-btn" onclick="switchPanel('c4-panel')" id="btn-c4">
+          <span class="icon">🔴</span><span>Connect 4</span>
+        </button>
+        <button class="game-btn" onclick="switchPanel('rps-panel')" id="btn-rps">
+          <span class="icon">✌️</span><span>Rock Paper ✂</span>
+        </button>
+        <button class="game-btn" onclick="switchPanel('wd-panel')" id="btn-wd">
+          <span class="icon">🔤</span><span>Word Duel</span>
+        </button>
+        <button class="game-btn" onclick="switchPanel('tr-panel')" id="btn-tr">
+          <span class="icon">⌨️</span><span>Type Racer</span>
+        </button>
+        <button class="game-btn" onclick="switchPanel('bs-panel')" id="btn-bs">
+          <span class="icon">🚢</span><span>Battleship</span>
+        </button>
+      </div>
+      <div class="sidebar-label" style="padding:14px 14px 8px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; color:var(--text-muted);">Online</div>
+      <div class="online-users-list" id="online-users-list"></div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- ── CHAT ── -->
+      <div id="chat-panel" class="game-panel active" style="display:flex;">
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row">
+          <input type="text" class="chat-input" id="chat-input" placeholder="Type a message..." maxlength="200" autocomplete="off" onkeydown="if(event.key==='Enter')sendChat()">
+          <button class="send-btn" onclick="sendChat()">Send</button>
+        </div>
+      </div>
+
+      <!-- ── TIC TAC TOE ── -->
+      <div id="ttt-panel" class="game-panel">
+        <div class="game-header">
+          <div class="game-title">TIC TAC TOE</div>
+          <div class="game-status" id="ttt-status">Looking for a game…</div>
+          <div style="margin-left:auto; display:flex; gap:8px;">
+            <button class="btn" onclick="tttNewGame()">New Game</button>
+          </div>
+        </div>
+        <div class="game-body">
+          <div id="ttt-players" style="font-size:14px; font-weight:700; color:var(--text-muted); text-align:center;"></div>
+          <div class="ttt-board" id="ttt-board"></div>
+        </div>
+      </div>
+
+      <!-- ── CONNECT 4 ── -->
+      <div id="c4-panel" class="game-panel">
+        <div class="game-header">
+          <div class="game-title">CONNECT 4</div>
+          <div class="game-status" id="c4-status">Looking for a game…</div>
+          <div style="margin-left:auto; display:flex; gap:8px;">
+            <button class="btn" onclick="c4NewGame()">New Game</button>
+          </div>
+        </div>
+        <div class="game-body">
+          <div id="c4-players" style="font-size:14px; font-weight:700; color:var(--text-muted); text-align:center;"></div>
+          <div class="c4-col-btns" id="c4-col-btns"></div>
+          <div class="c4-board" id="c4-board"></div>
+        </div>
+      </div>
+
+      <!-- ── ROCK PAPER SCISSORS ── -->
+      <div id="rps-panel" class="game-panel">
+        <div class="game-header">
+          <div class="game-title">ROCK PAPER SCISSORS</div>
+          <div class="game-status" id="rps-status">Best of 5!</div>
+        </div>
+        <div class="game-body">
+          <div class="rps-score" id="rps-score">0 — 0</div>
+          <div class="rps-vs" id="rps-vs"><span id="rps-p1-choice">❓</span><span style="font-size:18px;color:var(--text-muted)">VS</span><span id="rps-p2-choice">❓</span></div>
+          <div class="rps-result" id="rps-result"></div>
+          <div id="rps-challenge-ui">
+            <div style="text-align:center;margin-bottom:12px;color:var(--text-muted);font-size:13px;">Challenge another player — or play vs CPU!</div>
+            <div class="btn-row">
+              <button class="btn primary" onclick="rpsVsCpu()">▶ Play vs CPU</button>
+            </div>
+          </div>
+          <div id="rps-play-ui" style="display:none;">
+            <div class="rps-choices">
+              <button class="rps-btn" onclick="rpsPick('rock')">🪨</button>
+              <button class="rps-btn" onclick="rpsPick('paper')">📄</button>
+              <button class="rps-btn" onclick="rpsPick('scissors')">✂️</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── WORD DUEL ── -->
+      <div id="wd-panel" class="game-panel">
+        <div class="game-header">
+          <div class="game-title">WORD DUEL</div>
+          <div class="game-status" id="wd-status">Guess the secret word!</div>
+        </div>
+        <div class="game-body">
+          <div style="color:var(--text-muted);font-size:13px;text-align:center;max-width:420px">
+            Each player takes turns guessing letters. Guess the hidden word before your opponent!
+          </div>
+          <div class="wd-display" id="wd-display">_ _ _ _ _</div>
+          <div style="font-size:13px;color:var(--text-muted);">❤️ Lives: <span id="wd-lives">6</span></div>
+          <div id="wd-hangman" style="font-size:40px;text-align:center;"></div>
+          <div class="wd-guesses" id="wd-guesses"></div>
+          <div class="wd-input-row">
+            <input type="text" class="wd-input" id="wd-input" maxlength="1" placeholder="A" autocomplete="off" onkeydown="if(event.key==='Enter')wdGuess()">
+            <button class="btn primary" onclick="wdGuess()">Guess</button>
+          </div>
+          <div class="btn-row" style="margin-top:6px;">
+            <button class="btn" onclick="wdNewGame()">New Word</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TYPE RACER ── -->
+      <div id="tr-panel" class="game-panel">
+        <div class="game-header">
+          <div class="game-title">TYPE RACER</div>
+          <div class="game-status" id="tr-status">Race to finish typing!</div>
+        </div>
+        <div class="game-body" style="gap:14px;">
+          <div class="tr-wpm">⌨️ <span id="tr-wpm">0</span> WPM</div>
+          <div class="tr-prompt" id="tr-prompt"></div>
+          <div class="tr-bar-wrap">
+            <div class="tr-bar-label"><span id="tr-bar-you-label">You — 0%</span><span id="tr-bar-opp-label">Opponent — 0%</span></div>
+            <div class="tr-bar-bg"><div class="tr-bar p1" id="tr-bar-you" style="width:0%"></div></div>
+            <div class="tr-bar-bg" style="margin-top:4px;"><div class="tr-bar p2" id="tr-bar-opp" style="width:0%"></div></div>
+          </div>
+          <input type="text" id="tr-input" class="chat-input" style="max-width:500px;font-size:16px;" placeholder="Wait for race to start…" disabled autocomplete="off" oninput="trType()">
+          <div class="btn-row">
+            <button class="btn primary" onclick="trNewRace()">▶ New Race</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BATTLESHIP ── -->
+      <div id="bs-panel" class="game-panel">
+        <div class="game-header">
+          <div class="game-title">BATTLESHIP</div>
+          <div class="game-status" id="bs-status">Place your ships!</div>
+        </div>
+        <div class="game-body" style="gap:14px;">
+          <div id="bs-setup" style="display:flex;flex-direction:column;gap:12px;align-items:center;">
+            <div style="font-size:13px;color:var(--text-muted);text-align:center;">Click cells to place ships. Click a ship name to select it.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;" id="bs-ship-btns"></div>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <button class="btn" onclick="bsRotate()">↻ Rotate</button>
+              <span id="bs-dir-label" style="font-size:12px;color:var(--text-muted);">Horizontal</span>
+            </div>
+            <div class="bs-grid" id="bs-my-grid-setup"></div>
+            <div class="btn-row">
+              <button class="btn primary" onclick="bsStartGame()">▶ Play vs CPU</button>
+              <button class="btn" onclick="bsRandomPlace()">🎲 Random</button>
+            </div>
+          </div>
+          <div id="bs-game" style="display:none;">
+            <div class="bs-container">
+              <div class="bs-grid-wrapper">
+                <div class="bs-grid-title">Your Fleet</div>
+                <div class="bs-grid" id="bs-my-grid"></div>
+              </div>
+              <div class="bs-grid-wrapper">
+                <div class="bs-grid-title">Enemy Waters</div>
+                <div class="bs-grid" id="bs-enemy-grid"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- content -->
+  </div><!-- main-body -->
+</div><!-- app -->
+
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+// Replace with your Firebase config from https://console.firebase.google.com
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  databaseURL: "YOUR_DATABASE_URL",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+let db = null;
+let myUsername = '';
+let myUID = 'uid_' + Math.random().toString(36).slice(2);
+let currentPanel = 'chat-panel';
+let firebaseActive = false;
+
+// Try Firebase
+function initFirebase() {
+  try {
+    if (firebaseConfig.databaseURL && firebaseConfig.databaseURL !== 'YOUR_DATABASE_URL') {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.database();
+      firebaseActive = true;
+    }
+  } catch(e) { console.warn('Firebase not configured:', e); }
+}
+
+function joinApp() {
+  const input = document.getElementById('username-input');
+  const name = input.value.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!name || name.length < 2) {
+    input.style.borderColor = 'var(--red)';
+    setTimeout(() => input.style.borderColor = '', 800);
+    return;
+  }
+  myUsername = name;
+  document.getElementById('header-username').textContent = name;
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+
+  if (firebaseActive) {
+    const presenceRef = db.ref('presence/' + myUID);
+    presenceRef.set({ username: myUsername, ts: Date.now() });
+    presenceRef.onDisconnect().remove();
+    db.ref('presence').on('value', snap => {
+      const users = snap.val() || {};
+      const list = Object.values(users);
+      document.getElementById('online-count-val').textContent = list.length;
+      const ul = document.getElementById('online-users-list');
+      ul.innerHTML = list.map(u => `<div class="online-user"><div class="dot"></div>${escHtml(u.username)}</div>`).join('');
+    });
+    initChat();
+    listenTTT();
+    listenC4();
+  } else {
+    document.getElementById('online-count-val').textContent = '1';
+    document.getElementById('online-users-list').innerHTML = `<div class="online-user"><div class="dot"></div>${escHtml(myUsername)} (you)</div>`;
+    addSystemMsg('⚡ Firebase not configured — chat is local only. Games work vs CPU!');
+    initChatLocal();
+  }
+
+  tttInit();
+  c4Init();
+  wdInit();
+  trInit();
+  bsInit();
+  rpsInit();
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.style.display = 'none', 3000);
+}
+function switchPanel(id) {
+  document.querySelectorAll('.game-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.game-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const btn = document.getElementById('btn-' + id.replace('-panel',''));
+  if(btn) btn.classList.add('active');
+  currentPanel = id;
+}
+
+const avatarColors = ['#7c3aed','#06b6d4','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899'];
+function getColor(name) { let h=0; for(let c of name) h=(h+c.charCodeAt(0))%avatarColors.length; return avatarColors[h]; }
+function getInitial(name) { return name[0].toUpperCase(); }
+
+// ── CHAT ───────────────────────────────────────────────────────────────────
+const localMsgs = [];
+function initChat() {
+  db.ref('chat').limitToLast(50).on('child_added', snap => {
+    const m = snap.val();
+    renderMessage(m);
+  });
+}
+function initChatLocal() {}
+
+function addSystemMsg(text) {
+  renderMessage({ system: true, text });
+}
+
+function renderMessage(m) {
+  const box = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  if (m.system) {
+    div.className = 'message system';
+    div.innerHTML = `<div class="text">${escHtml(m.text)}</div>`;
+  } else {
+    const own = m.username === myUsername;
+    div.className = 'message' + (own ? ' own' : '');
+    const color = getColor(m.username);
+    div.innerHTML = `
+      <div class="avatar" style="background:${color}20;color:${color}">${getInitial(m.username)}</div>
+      <div class="body">
+        <div class="meta"><span class="username" style="color:${color}">${escHtml(m.username)}</span><span>${m.time || ''}</span></div>
+        <div class="text">${escHtml(m.text)}</div>
+      </div>`;
+  }
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+  const msg = { username: myUsername, text, time };
+  if (firebaseActive) {
+    db.ref('chat').push(msg);
+  } else {
+    renderMessage(msg);
+  }
+}
+
+// ── TIC TAC TOE ────────────────────────────────────────────────────────────
+let tttBoard, tttCurrent, tttMyMark, tttGameId, tttOver;
+const tttWins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+function tttInit() {
+  tttNewGame();
+}
+function tttNewGame() {
+  tttBoard = Array(9).fill('');
+  tttCurrent = 'X';
+  tttMyMark = 'X';
+  tttOver = false;
+  tttGameId = 'local_' + Date.now();
+  document.getElementById('ttt-status').textContent = "Your turn (X)";
+  document.getElementById('ttt-players').textContent = `You = X  |  CPU = O`;
+  tttRender();
+  if (firebaseActive) {
+    document.getElementById('ttt-players').textContent = 'Waiting for opponent…';
+    tttFindOnlineGame();
+  }
+}
+
+function tttFindOnlineGame() {
+  const gamesRef = db.ref('ttt_games');
+  gamesRef.orderByChild('status').equalTo('waiting').limitToFirst(1).once('value', snap => {
+    const games = snap.val();
+    if (games) {
+      const id = Object.keys(games)[0];
+      if (games[id].p1 === myUsername) return;
+      db.ref('ttt_games/' + id).update({ p2: myUsername, status: 'playing' });
+      tttGameId = id;
+      tttMyMark = 'O';
+      document.getElementById('ttt-players').textContent = `${games[id].p1} (X) vs ${myUsername} (O)`;
+      document.getElementById('ttt-status').textContent = "X's turn";
+    } else {
+      const ref = db.ref('ttt_games').push({ p1: myUsername, p2: null, board: Array(9).fill(''), turn: 'X', status: 'waiting', ts: Date.now() });
+      tttGameId = ref.key;
+      tttMyMark = 'X';
+      document.getElementById('ttt-status').textContent = 'Waiting for opponent…';
+    }
+    listenTTT();
+  });
+}
+
+function listenTTT() {
+  if (!firebaseActive || !tttGameId || tttGameId.startsWith('local')) return;
+  db.ref('ttt_games/' + tttGameId).on('value', snap => {
+    const g = snap.val();
+    if (!g) return;
+    tttBoard = g.board || Array(9).fill('');
+    tttCurrent = g.turn;
+    const isMyTurn = tttCurrent === tttMyMark;
+    if (g.p2) document.getElementById('ttt-players').textContent = `${g.p1} (X) vs ${g.p2} (O)`;
+    document.getElementById('ttt-status').textContent = g.winner ? (g.winner === 'draw' ? 'Draw!' : `${g.winner} wins! 🎉`) : (isMyTurn ? 'Your turn!' : `${tttCurrent}'s turn`);
+    tttOver = !!g.winner;
+    tttRender(g.winLine);
+  });
+}
+
+function tttRender(winLine) {
+  const board = document.getElementById('ttt-board');
+  board.innerHTML = '';
+  tttBoard.forEach((cell, i) => {
+    const div = document.createElement('div');
+    div.className = 'ttt-cell' + (cell ? ' taken' : '') + (cell ? ' ' + cell.toLowerCase() : '') + (winLine && winLine.includes(i) ? ' win' : '');
+    div.textContent = cell;
+    div.onclick = () => tttMove(i);
+    board.appendChild(div);
+  });
+}
+
+function tttMove(i) {
+  if (tttOver || tttBoard[i]) return;
+  if (firebaseActive && tttGameId && !tttGameId.startsWith('local')) {
+    if (tttCurrent !== tttMyMark) return;
+    const newBoard = [...tttBoard];
+    newBoard[i] = tttCurrent;
+    const win = tttCheckWin(newBoard, tttCurrent);
+    const draw = !win && newBoard.every(c => c);
+    db.ref('ttt_games/' + tttGameId).update({
+      board: newBoard,
+      turn: tttCurrent === 'X' ? 'O' : 'X',
+      winner: win ? tttCurrent : (draw ? 'draw' : null),
+      winLine: win || null
+    });
+  } else {
+    // Local vs CPU
+    tttBoard[i] = 'X';
+    let win = tttCheckWin(tttBoard, 'X');
+    if (win) { tttOver = true; tttRender(win); document.getElementById('ttt-status').textContent = 'You win! 🎉'; toast('You win! 🎉'); return; }
+    if (tttBoard.every(c => c)) { tttOver = true; tttRender(); document.getElementById('ttt-status').textContent = "Draw!"; return; }
+    tttRender();
+    document.getElementById('ttt-status').textContent = "CPU thinking…";
+    setTimeout(() => {
+      const move = tttCpuMove();
+      tttBoard[move] = 'O';
+      win = tttCheckWin(tttBoard, 'O');
+      if (win) { tttOver = true; tttRender(win); document.getElementById('ttt-status').textContent = 'CPU wins!'; toast('CPU wins!'); return; }
+      if (tttBoard.every(c => c)) { tttOver = true; tttRender(); document.getElementById('ttt-status').textContent = "Draw!"; return; }
+      tttRender();
+      document.getElementById('ttt-status').textContent = 'Your turn (X)';
+    }, 400);
+  }
+}
+
+function tttCpuMove() {
+  for (const m of ['O','X']) {
+    for (const combo of tttWins) {
+      const cells = combo.map(i => tttBoard[i]);
+      if (cells.filter(c=>c===m).length===2 && cells.includes('')) {
+        return combo[cells.indexOf('')];
+      }
+    }
+  }
+  if (!tttBoard[4]) return 4;
+  const corners = [0,2,6,8].filter(i => !tttBoard[i]);
+  if (corners.length) return corners[Math.floor(Math.random()*corners.length)];
+  return tttBoard.indexOf('');
+}
+
+function tttCheckWin(board, mark) {
+  for (const combo of tttWins) {
+    if (combo.every(i => board[i] === mark)) return combo;
+  }
+  return null;
+}
+
+// ── CONNECT 4 ──────────────────────────────────────────────────────────────
+let c4Board, c4Turn, c4GameId, c4Over, c4MyPlayer;
+const C4_ROWS = 6, C4_COLS = 7;
+
+function c4Init() { c4NewGame(); }
+function c4NewGame() {
+  c4Board = Array(C4_ROWS).fill(null).map(() => Array(C4_COLS).fill(0));
+  c4Turn = 1; c4Over = false; c4MyPlayer = 1;
+  document.getElementById('c4-status').textContent = 'Your turn (🔴)';
+  document.getElementById('c4-players').textContent = 'You = 🔴  |  CPU = 🟡';
+  c4Render();
+}
+function c4Drop(col) {
+  if (c4Over) return;
+  if (firebaseActive && c4GameId && !c4GameId.startsWith('local')) {
+    if (c4Turn !== c4MyPlayer) return;
+    const b = c4Board.map(r=>[...r]);
+    let row = -1;
+    for (let r = C4_ROWS-1; r >= 0; r--) { if (!b[r][col]) { b[r][col] = c4Turn; row = r; break; } }
+    if (row < 0) return;
+    const win = c4CheckWin(b, row, col, c4Turn);
+    const draw = !win && b[0].every((c,ci) => b.some(r=>r[ci]));
+    db.ref('c4_games/' + c4GameId).update({
+      board: b.map(r=>r.join('')).join('|'),
+      turn: c4Turn === 1 ? 2 : 1,
+      winner: win ? c4Turn : (draw ? 0 : null),
+      winCells: win || null
+    });
+    return;
+  }
+  // Local vs CPU
+  if (c4Turn !== 1) return;
+  let row = c4DropPiece(c4Board, col, 1);
+  if (row < 0) return;
+  let win = c4CheckWin(c4Board, row, col, 1);
+  c4Render(win);
+  if (win) { c4Over = true; document.getElementById('c4-status').textContent = 'You win! 🎉'; toast('You win! 🎉'); return; }
+  if (c4Board[0].every(c => c)) { c4Over = true; document.getElementById('c4-status').textContent = 'Draw!'; return; }
+  c4Turn = 2;
+  document.getElementById('c4-status').textContent = 'CPU thinking…';
+  setTimeout(() => {
+    const cpuCol = c4CpuMove();
+    row = c4DropPiece(c4Board, cpuCol, 2);
+    win = c4CheckWin(c4Board, row, cpuCol, 2);
+    c4Render(win);
+    if (win) { c4Over = true; document.getElementById('c4-status').textContent = 'CPU wins!'; toast('CPU wins!'); return; }
+    if (c4Board[0].every(c => c)) { c4Over = true; document.getElementById('c4-status').textContent = 'Draw!'; return; }
+    c4Turn = 1;
+    document.getElementById('c4-status').textContent = 'Your turn (🔴)';
+  }, 500);
+}
+
+function listenC4() {}
+
+function c4DropPiece(board, col, player) {
+  for (let r = C4_ROWS-1; r >= 0; r--) {
+    if (!board[r][col]) { board[r][col] = player; return r; }
+  }
+  return -1;
+}
+function c4CpuMove() {
+  // Win / block / random
+  for (const p of [2,1]) {
+    for (let c = 0; c < C4_COLS; c++) {
+      const b = c4Board.map(r=>[...r]);
+      const r = c4DropPiece(b, c, p);
+      if (r >= 0 && c4CheckWin(b, r, c, p)) return c;
+    }
+  }
+  const valid = [];
+  for (let c = 0; c < C4_COLS; c++) if (!c4Board[0][c]) valid.push(c);
+  return valid[Math.floor(Math.random()*valid.length)];
+}
+function c4CheckWin(board, row, col, p) {
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for (const [dr,dc] of dirs) {
+    const cells = [[row,col]];
+    for (let i=1;i<=3;i++) { const r=row+dr*i,c=col+dc*i; if(r>=0&&r<C4_ROWS&&c>=0&&c<C4_COLS&&board[r][c]===p) cells.push([r,c]); else break; }
+    for (let i=1;i<=3;i++) { const r=row-dr*i,c=col-dc*i; if(r>=0&&r<C4_ROWS&&c>=0&&c<C4_COLS&&board[r][c]===p) cells.push([r,c]); else break; }
+    if (cells.length>=4) return cells;
+  }
+  return null;
+}
+function c4Render(winCells) {
+  const grid = document.getElementById('c4-board');
+  const colBtns = document.getElementById('c4-col-btns');
+  grid.innerHTML = ''; colBtns.innerHTML = '';
+  for (let c = 0; c < C4_COLS; c++) {
+    const btn = document.createElement('button');
+    btn.className = 'c4-col-btn'; btn.textContent = '▼';
+    btn.onclick = () => c4Drop(c);
+    colBtns.appendChild(btn);
+  }
+  for (let r = 0; r < C4_ROWS; r++) {
+    for (let c = 0; c < C4_COLS; c++) {
+      const div = document.createElement('div');
+      div.className = 'c4-cell';
+      const v = c4Board[r][c];
+      if (v===1) div.classList.add('p1');
+      if (v===2) div.classList.add('p2');
+      if (winCells && winCells.some(([wr,wc])=>wr===r&&wc===c)) div.classList.add('win');
+      grid.appendChild(div);
+    }
+  }
+}
+
+// ── ROCK PAPER SCISSORS ────────────────────────────────────────────────────
+let rpsScore = [0,0], rpsWaiting = false;
+const rpsEmoji = { rock:'🪨', paper:'📄', scissors:'✂️' };
+const rpsBeats = { rock:'scissors', paper:'rock', scissors:'paper' };
+const rpsOptions = ['rock','paper','scissors'];
+
+function rpsInit() {}
+function rpsVsCpu() {
+  document.getElementById('rps-challenge-ui').style.display = 'none';
+  document.getElementById('rps-play-ui').style.display = 'flex';
+  document.getElementById('rps-status').textContent = 'Pick your move!';
+}
+function rpsPick(choice) {
+  document.querySelectorAll('.rps-btn').forEach(b => b.classList.remove('selected'));
+  event.target.closest('.rps-btn').classList.add('selected');
+  const cpu = rpsOptions[Math.floor(Math.random()*3)];
+  document.getElementById('rps-p1-choice').textContent = rpsEmoji[choice];
+  document.getElementById('rps-p2-choice').textContent = rpsEmoji[cpu];
+  let result, msg;
+  if (choice === cpu) { result = 'tie'; msg = "It's a tie!"; }
+  else if (rpsBeats[choice] === cpu) { rpsScore[0]++; result = 'win'; msg = 'You win this round! 🎉'; }
+  else { rpsScore[1]++; result = 'lose'; msg = 'CPU wins this round!'; }
+  document.getElementById('rps-result').textContent = msg;
+  document.getElementById('rps-score').textContent = `${rpsScore[0]} — ${rpsScore[1]}`;
+  if (rpsScore[0]===3||rpsScore[1]===3) {
+    const final = rpsScore[0]===3 ? 'You win the match! 🏆' : 'CPU wins the match!';
+    document.getElementById('rps-status').textContent = final;
+    toast(final);
+    setTimeout(() => { rpsScore=[0,0]; document.getElementById('rps-score').textContent='0 — 0'; document.getElementById('rps-result').textContent=''; document.getElementById('rps-p1-choice').textContent='❓'; document.getElementById('rps-p2-choice').textContent='❓'; }, 2500);
+  }
+}
+
+// ── WORD DUEL (Hangman) ────────────────────────────────────────────────────
+const wdWords = ['PLANET','CASTLE','PYTHON','JUNGLE','ROCKET','BRIDGE','GUITAR','MIRROR','RABBIT','WIZARD','DRAGON','COFFEE','FLOWER','HAMMER','ISLAND','JACKET','KERNEL','LEMON','MARBLE','NAPKIN','OYSTER','PUZZLE','QUARTZ','SAFARI','TURTLE','VELVET','WALNUT','XENON','YOGURT','ZEPHYR','ANCHOR','BONSAI','CANYON','DIESEL','ECLIPSE','FOSSIL','GOBLIN','HERALD','INDIGO'];
+let wdWord, wdGuessed, wdLives;
+const wdHangman = ['','😰','😟','😨','😱','💀','☠️'];
+
+function wdInit() { wdNewGame(); }
+function wdNewGame() {
+  wdWord = wdWords[Math.floor(Math.random()*wdWords.length)];
+  wdGuessed = new Set();
+  wdLives = 6;
+  document.getElementById('wd-status').textContent = `Guess the ${wdWord.length}-letter word!`;
+  wdRender();
+}
+function wdGuess() {
+  const input = document.getElementById('wd-input');
+  const letter = input.value.toUpperCase().trim();
+  input.value = '';
+  if (!letter || !/[A-Z]/.test(letter) || wdGuessed.has(letter)) return;
+  wdGuessed.add(letter);
+  if (!wdWord.includes(letter)) wdLives--;
+  wdRender();
+  const revealed = wdWord.split('').every(c => wdGuessed.has(c));
+  if (revealed) { document.getElementById('wd-status').textContent = `You got it! The word was ${wdWord} 🎉`; toast(`You got it! "${wdWord}" 🎉`); }
+  else if (wdLives <= 0) { document.getElementById('wd-status').textContent = `Game over! It was "${wdWord}"`; toast(`Game over! It was "${wdWord}"`); }
+}
+function wdRender() {
+  const display = wdWord.split('').map(c => wdGuessed.has(c) ? c : '_').join(' ');
+  document.getElementById('wd-display').textContent = display;
+  document.getElementById('wd-lives').textContent = wdLives;
+  document.getElementById('wd-hangman').textContent = wdHangman[Math.min(6-wdLives, 6)];
+  const guessDiv = document.getElementById('wd-guesses');
+  guessDiv.innerHTML = [...wdGuessed].map(l => {
+    const correct = wdWord.includes(l);
+    return `<div class="wd-guess-chip ${correct?'correct':'wrong'}">${l}</div>`;
+  }).join('');
+}
+
+// ── TYPE RACER ─────────────────────────────────────────────────────────────
+const trPrompts = [
+  "The quick brown fox jumps over the lazy dog near the riverbank at sunset.",
+  "Programming is the art of telling another human what one wants the computer to do.",
+  "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+  "In the middle of difficulty lies opportunity, and every challenge is a new beginning.",
+  "The only way to do great work is to love what you do and pursue it with passion.",
+  "Space is big, really big, you just won't believe how vastly hugely mindbogglingly big it is.",
+  "To be or not to be, that is the question which haunts the deepest corners of the mind.",
+  "The Internet is becoming the town square for the global village of tomorrow.",
+];
+let trText, trPosition, trStartTime, trStarted, trGameId, trCpuInterval;
+
+function trInit() { trNewRace(); }
+function trNewRace() {
+  trText = trPrompts[Math.floor(Math.random()*trPrompts.length)];
+  trPosition = 0; trStarted = false;
+  document.getElementById('tr-prompt').textContent = trText;
+  document.getElementById('tr-input').value = '';
+  document.getElementById('tr-input').disabled = false;
+  document.getElementById('tr-input').placeholder = 'Start typing…';
+  document.getElementById('tr-wpm').textContent = '0';
+  document.getElementById('tr-status').textContent = 'Type to start the race!';
+  document.getElementById('tr-bar-you').style.width = '0%';
+  document.getElementById('tr-bar-opp').style.width = '0%';
+  document.getElementById('tr-bar-you-label').textContent = `${myUsername} — 0%`;
+  document.getElementById('tr-bar-opp-label').textContent = 'CPU — 0%';
+  clearInterval(trCpuInterval);
+  trRenderPrompt();
+  // CPU sim
+  let cpuPos = 0;
+  const cpuSpeed = 50 + Math.random()*60; // chars per second
+  trCpuInterval = setInterval(() => {
+    if (!trStarted) return;
+    cpuPos = Math.min(cpuPos + cpuSpeed/10, trText.length);
+    const pct = Math.round(cpuPos/trText.length*100);
+    document.getElementById('tr-bar-opp').style.width = pct+'%';
+    document.getElementById('tr-bar-opp-label').textContent = `CPU — ${pct}%`;
+    if (cpuPos >= trText.length) {
+      clearInterval(trCpuInterval);
+      if (trPosition < trText.length) {
+        document.getElementById('tr-status').textContent = 'CPU finished first! Better luck next time.';
+        toast('CPU wins the race!');
+        document.getElementById('tr-input').disabled = true;
+      }
+    }
+  }, 100);
+}
+function trType() {
+  const val = document.getElementById('tr-input').value;
+  if (!trStarted) { trStarted = true; trStartTime = Date.now(); }
+  trPosition = 0;
+  for (let i = 0; i < val.length && i < trText.length; i++) {
+    if (val[i] === trText[i]) trPosition = i+1; else break;
+  }
+  const elapsed = (Date.now()-trStartTime)/60000;
+  const wpm = elapsed > 0 ? Math.round((trPosition/5)/elapsed) : 0;
+  document.getElementById('tr-wpm').textContent = wpm;
+  const pct = Math.round(trPosition/trText.length*100);
+  document.getElementById('tr-bar-you').style.width = pct+'%';
+  document.getElementById('tr-bar-you-label').textContent = `${myUsername} — ${pct}%`;
+  trRenderPrompt();
+  if (trPosition >= trText.length) {
+    clearInterval(trCpuInterval);
+    document.getElementById('tr-status').textContent = `You finished! ${wpm} WPM 🏆`;
+    toast(`Race done! ${wpm} WPM 🏆`);
+    document.getElementById('tr-input').disabled = true;
+  }
+}
+function trRenderPrompt() {
+  const el = document.getElementById('tr-prompt');
+  const val = document.getElementById('tr-input').value;
+  let html = '';
+  for (let i = 0; i < trText.length; i++) {
+    if (i < val.length) {
+      if (val[i] === trText[i]) html += `<span class="tr-done">${trText[i]}</span>`;
+      else html += `<span class="tr-error">${trText[i]}</span>`;
+    } else if (i === val.length) {
+      html += `<span class="tr-cursor">${trText[i]}</span>`;
+    } else {
+      html += trText[i];
+    }
+  }
+  el.innerHTML = html;
+}
+
+// ── BATTLESHIP ─────────────────────────────────────────────────────────────
+const SHIPS = [
+  { name: 'Carrier', size: 5, emoji: '🛳' },
+  { name: 'Battleship', size: 4, emoji: '⚓' },
+  { name: 'Cruiser', size: 3, emoji: '🚢' },
+  { name: 'Submarine', size: 3, emoji: '🤿' },
+  { name: 'Destroyer', size: 2, emoji: '⛵' },
+];
+let bsMyGrid, bsEnemyGrid, bsEnemyShips, bsSelectedShip, bsHorizontal, bsPlacedShips, bsGameStarted, bsMyTurn;
+
+function bsInit() {
+  bsMyGrid = Array(10).fill(null).map(() => Array(10).fill(0));
+  bsEnemyGrid = Array(10).fill(null).map(() => Array(10).fill(0));
+  bsPlacedShips = new Set();
+  bsSelectedShip = null;
+  bsHorizontal = true;
+  bsGameStarted = false;
+  bsMyTurn = true;
+  bsRenderSetup();
+}
+function bsRotate() {
+  bsHorizontal = !bsHorizontal;
+  document.getElementById('bs-dir-label').textContent = bsHorizontal ? 'Horizontal' : 'Vertical';
+}
+function bsRenderSetup() {
+  const btns = document.getElementById('bs-ship-btns');
+  btns.innerHTML = SHIPS.map((s,i) => `
+    <div class="bs-setup-ship ${bsSelectedShip===i?'selected':''} ${bsPlacedShips.has(i)?'placed':''}" onclick="bsSelectShip(${i})">
+      ${s.emoji} ${s.name} (${s.size})
+    </div>`).join('');
+  const grid = document.getElementById('bs-my-grid-setup');
+  grid.innerHTML = '';
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      const div = document.createElement('div');
+      div.className = 'bs-cell' + (bsMyGrid[r][c] ? ' ship' : '');
+      div.onclick = () => bsPlace(r, c);
+      grid.appendChild(div);
+    }
+  }
+}
+function bsSelectShip(i) {
+  if (bsPlacedShips.has(i)) return;
+  bsSelectedShip = i;
+  bsRenderSetup();
+}
+function bsPlace(row, col) {
+  if (bsSelectedShip === null) return;
+  const ship = SHIPS[bsSelectedShip];
+  const cells = [];
+  for (let i = 0; i < ship.size; i++) {
+    const r = bsHorizontal ? row : row + i;
+    const c = bsHorizontal ? col + i : col;
+    if (r >= 10 || c >= 10 || bsMyGrid[r][c]) return;
+    cells.push([r,c]);
+  }
+  cells.forEach(([r,c]) => bsMyGrid[r][c] = bsSelectedShip + 1);
+  bsPlacedShips.add(bsSelectedShip);
+  bsSelectedShip = null;
+  bsRenderSetup();
+}
+function bsRandomPlace() {
+  bsMyGrid = Array(10).fill(null).map(() => Array(10).fill(0));
+  bsPlacedShips.clear();
+  SHIPS.forEach((ship, si) => {
+    let placed = false;
+    while (!placed) {
+      const horiz = Math.random() > 0.5;
+      const row = Math.floor(Math.random() * 10);
+      const col = Math.floor(Math.random() * 10);
+      const cells = [];
+      let ok = true;
+      for (let i = 0; i < ship.size; i++) {
+        const r = horiz ? row : row + i;
+        const c = horiz ? col + i : col;
+        if (r >= 10 || c >= 10 || bsMyGrid[r][c]) { ok = false; break; }
+        cells.push([r,c]);
+      }
+      if (ok) { cells.forEach(([r,c]) => bsMyGrid[r][c] = si+1); bsPlacedShips.add(si); placed = true; }
+    }
+  });
+  bsSelectedShip = null;
+  bsRenderSetup();
+}
+function bsStartGame() {
+  if (bsPlacedShips.size < SHIPS.length) {
+    toast('Place all ships first! (or use Random 🎲)');
+    return;
+  }
+  // Place CPU ships randomly
+  bsEnemyShips = Array(10).fill(null).map(() => Array(10).fill(0));
+  SHIPS.forEach((ship, si) => {
+    let placed = false;
+    while (!placed) {
+      const horiz = Math.random() > 0.5;
+      const row = Math.floor(Math.random() * 10);
+      const col = Math.floor(Math.random() * 10);
+      const cells = [];
+      let ok = true;
+      for (let i = 0; i < ship.size; i++) {
+        const r = horiz ? row : row+i; const c = horiz ? col+i : col;
+        if (r>=10||c>=10||bsEnemyShips[r][c]) { ok=false; break; }
+        cells.push([r,c]);
+      }
+      if (ok) { cells.forEach(([r,c]) => bsEnemyShips[r][c]=si+1); placed=true; }
+    }
+  });
+  bsEnemyGrid = Array(10).fill(null).map(() => Array(10).fill(0)); // 0=unknown,1=miss,2=hit
+  bsGameStarted = true; bsMyTurn = true;
+  document.getElementById('bs-setup').style.display = 'none';
+  document.getElementById('bs-game').style.display = 'block';
+  document.getElementById('bs-status').textContent = 'Your turn — fire!';
+  bsRenderGame();
+}
+function bsShoot(row, col) {
+  if (!bsGameStarted || !bsMyTurn || bsEnemyGrid[row][col]) return;
+  const hit = !!bsEnemyShips[row][col];
+  bsEnemyGrid[row][col] = hit ? 2 : 1;
+  bsRenderGame();
+  const totalHits = bsEnemyGrid.flat().filter(v=>v===2).length;
+  const totalShipCells = SHIPS.reduce((s,sh)=>s+sh.size,0);
+  if (totalHits >= totalShipCells) { document.getElementById('bs-status').textContent = 'You sunk the fleet! 🏆'; toast('You win Battleship! 🏆'); bsGameStarted=false; return; }
+  document.getElementById('bs-status').textContent = hit ? 'Hit! 💥 Fire again!' : 'Miss! CPU\'s turn…';
+  if (!hit) { bsMyTurn = false; setTimeout(bsCpuTurn, 800); }
+}
+function bsCpuTurn() {
+  let r, c;
+  do { r = Math.floor(Math.random()*10); c = Math.floor(Math.random()*10); } while (bsMyGrid[r][c] > 10);
+  const hit = bsMyGrid[r][c] > 0 && bsMyGrid[r][c] <= SHIPS.length;
+  bsMyGrid[r][c] = hit ? 20 : 11; // >10 = shot
+  bsRenderGame();
+  const totalHits = bsMyGrid.flat().filter(v=>v===20).length;
+  const totalShipCells = SHIPS.reduce((s,sh)=>s+sh.size,0);
+  if (totalHits >= totalShipCells) { document.getElementById('bs-status').textContent = 'CPU sunk your fleet! 💀'; toast('CPU wins Battleship!'); bsGameStarted=false; return; }
+  bsMyTurn = true;
+  document.getElementById('bs-status').textContent = hit ? 'CPU hit your ship! 😱 Your turn.' : 'CPU missed! Your turn.';
+}
+function bsRenderGame() {
+  // My grid
+  const myEl = document.getElementById('bs-my-grid');
+  myEl.innerHTML = '';
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      const div = document.createElement('div');
+      div.className = 'bs-cell';
+      const v = bsMyGrid[r][c];
+      if (v > 0 && v <= SHIPS.length) div.classList.add('ship');
+      if (v === 20) { div.classList.add('hit'); div.textContent = '💥'; }
+      if (v === 11) { div.classList.add('miss'); div.textContent = '💧'; }
+      myEl.appendChild(div);
+    }
+  }
+  // Enemy grid
+  const enEl = document.getElementById('bs-enemy-grid');
+  enEl.innerHTML = '';
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      const div = document.createElement('div');
+      div.className = 'bs-cell';
+      const v = bsEnemyGrid[r][c];
+      if (v === 2) { div.classList.add('hit'); div.textContent = '💥'; }
+      if (v === 1) { div.classList.add('miss'); div.textContent = '💧'; }
+      div.onclick = () => bsShoot(r, c);
+      enEl.appendChild(div);
+    }
+  }
+}
+</script>
+</body>
+</html>
