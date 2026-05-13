@@ -6,9 +6,7 @@
 <title>GameZone Chat</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- Firebase loaded via module script below -->
 
 <style>
   :root {
@@ -596,11 +594,7 @@
     <button class="btn-join" onclick="joinApp()">▶ JOIN THE ZONE</button>
   </div>
   <div class="firebase-note">
-    ⚡ <strong>Real-time multiplayer requires Firebase.</strong><br>
-    1. Create a free project at <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a><br>
-    2. Enable <strong>Realtime Database</strong> (test mode)<br>
-    3. Replace <code>firebaseConfig</code> in the &lt;script&gt; at the bottom of this file.<br>
-    Without Firebase, all features work locally in your own tab (great for testing!).
+    ✅ <strong>Firebase connected!</strong> Chat and multiplayer games sync in real time across all players. Share the link with friends to play together!
   </div>
 </div>
 
@@ -798,36 +792,67 @@
 
 <div id="toast"></div>
 
-<script>
-// ── CONFIG ──────────────────────────────────────────────────────────────────
-// Replace with your Firebase config from https://console.firebase.google.com
+<script type="module">
+// ── FIREBASE (modular v12) ───────────────────────────────────────────────────
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+import {
+  getDatabase, ref, push, set, onValue, onChildAdded, update, remove, onDisconnect, query, orderByChild, equalTo, limitToFirst, once
+} from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  databaseURL: "YOUR_DATABASE_URL",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDP9U-HHqYakK63-MyNQtPQe0-W9R-8gmY",
+  authDomain: "chat-b0282.firebaseapp.com",
+  databaseURL: "https://chat-b0282-default-rtdb.firebaseio.com",
+  projectId: "chat-b0282",
+  storageBucket: "chat-b0282.firebasestorage.app",
+  messagingSenderId: "980652106666",
+  appId: "1:980652106666:web:d7a961ac53886e8dd981d3"
 };
+
+const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
+
+// Shim: wrap modular API into a db helper object so the rest of the code works unchanged
+const db = {
+  ref: (path) => ({
+    _path: path,
+    set: (val) => set(ref(database, path), val),
+    push: (val) => { const r = push(ref(database, path)); if (val !== undefined) set(r, val); return r; },
+    update: (val) => update(ref(database, path), val),
+    remove: () => remove(ref(database, path)),
+    on: (evt, cb) => {
+      if (evt === 'value') onValue(ref(database, path), snap => cb(snap));
+      if (evt === 'child_added') onChildAdded(ref(database, path), snap => cb(snap));
+    },
+    once: (evt, cb) => {
+      // returns promise-like for once()
+      const { get } = { get: (r) => import("https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js").then(m => m.get(r)) };
+      import("https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js").then(m => {
+        m.get(ref(database, path)).then(snap => cb(snap));
+      });
+    },
+    onDisconnect: () => ({ remove: () => onDisconnect(ref(database, path)).remove() }),
+    orderByChild: (child) => ({
+      equalTo: (val) => ({
+        limitToFirst: (n) => ({
+          once: (evt, cb) => {
+            import("https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js").then(m => {
+              const q = m.query(ref(database, path), m.orderByChild(child), m.equalTo(val), m.limitToFirst(n));
+              m.get(q).then(snap => cb(snap));
+            });
+          }
+        })
+      })
+    }),
+  })
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 
-let db = null;
 let myUsername = '';
 let myUID = 'uid_' + Math.random().toString(36).slice(2);
 let currentPanel = 'chat-panel';
-let firebaseActive = false;
-
-// Try Firebase
-function initFirebase() {
-  try {
-    if (firebaseConfig.databaseURL && firebaseConfig.databaseURL !== 'YOUR_DATABASE_URL') {
-      firebase.initializeApp(firebaseConfig);
-      db = firebase.database();
-      firebaseActive = true;
-    }
-  } catch(e) { console.warn('Firebase not configured:', e); }
-}
+const firebaseActive = true;
 
 function joinApp() {
   const input = document.getElementById('username-input');
@@ -842,26 +867,19 @@ function joinApp() {
   document.getElementById('setup-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
 
-  if (firebaseActive) {
-    const presenceRef = db.ref('presence/' + myUID);
-    presenceRef.set({ username: myUsername, ts: Date.now() });
-    presenceRef.onDisconnect().remove();
-    db.ref('presence').on('value', snap => {
-      const users = snap.val() || {};
-      const list = Object.values(users);
-      document.getElementById('online-count-val').textContent = list.length;
-      const ul = document.getElementById('online-users-list');
-      ul.innerHTML = list.map(u => `<div class="online-user"><div class="dot"></div>${escHtml(u.username)}</div>`).join('');
-    });
-    initChat();
-    listenTTT();
-    listenC4();
-  } else {
-    document.getElementById('online-count-val').textContent = '1';
-    document.getElementById('online-users-list').innerHTML = `<div class="online-user"><div class="dot"></div>${escHtml(myUsername)} (you)</div>`;
-    addSystemMsg('⚡ Firebase not configured — chat is local only. Games work vs CPU!');
-    initChatLocal();
-  }
+  const presenceRef = db.ref('presence/' + myUID);
+  presenceRef.set({ username: myUsername, ts: Date.now() });
+  presenceRef.onDisconnect().remove();
+  db.ref('presence').on('value', snap => {
+    const users = snap.val() || {};
+    const list = Object.values(users);
+    document.getElementById('online-count-val').textContent = list.length;
+    const ul = document.getElementById('online-users-list');
+    ul.innerHTML = list.map(u => `<div class="online-user"><div class="dot"></div>${escHtml(u.username)}</div>`).join('');
+  });
+  initChat();
+  listenTTT();
+  listenC4();
 
   tttInit();
   c4Init();
@@ -895,9 +913,11 @@ function getInitial(name) { return name[0].toUpperCase(); }
 // ── CHAT ───────────────────────────────────────────────────────────────────
 const localMsgs = [];
 function initChat() {
-  db.ref('chat').limitToLast(50).on('child_added', snap => {
-    const m = snap.val();
-    renderMessage(m);
+  const chatRef = db.ref('chat');
+  // Use limitToLast via modular query inline
+  import("https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js").then(m => {
+    const q = m.query(m.ref(database, 'chat'), m.limitToLast(50));
+    m.onChildAdded(q, snap => renderMessage(snap.val()));
   });
 }
 function initChatLocal() {}
@@ -935,11 +955,7 @@ function sendChat() {
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
   const msg = { username: myUsername, text, time };
-  if (firebaseActive) {
-    db.ref('chat').push(msg);
-  } else {
-    renderMessage(msg);
-  }
+  db.ref('chat').push(msg);
 }
 
 // ── TIC TAC TOE ────────────────────────────────────────────────────────────
@@ -965,39 +981,44 @@ function tttNewGame() {
 }
 
 function tttFindOnlineGame() {
-  const gamesRef = db.ref('ttt_games');
-  gamesRef.orderByChild('status').equalTo('waiting').limitToFirst(1).once('value', snap => {
-    const games = snap.val();
-    if (games) {
-      const id = Object.keys(games)[0];
-      if (games[id].p1 === myUsername) return;
-      db.ref('ttt_games/' + id).update({ p2: myUsername, status: 'playing' });
-      tttGameId = id;
-      tttMyMark = 'O';
-      document.getElementById('ttt-players').textContent = `${games[id].p1} (X) vs ${myUsername} (O)`;
-      document.getElementById('ttt-status').textContent = "X's turn";
-    } else {
-      const ref = db.ref('ttt_games').push({ p1: myUsername, p2: null, board: Array(9).fill(''), turn: 'X', status: 'waiting', ts: Date.now() });
-      tttGameId = ref.key;
-      tttMyMark = 'X';
-      document.getElementById('ttt-status').textContent = 'Waiting for opponent…';
-    }
-    listenTTT();
+  import("https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js").then(m => {
+    const q = m.query(m.ref(database, 'ttt_games'), m.orderByChild('status'), m.equalTo('waiting'), m.limitToFirst(1));
+    m.get(q).then(snap => {
+      const games = snap.val();
+      if (games) {
+        const id = Object.keys(games)[0];
+        if (games[id].p1 === myUsername) return;
+        db.ref('ttt_games/' + id).update({ p2: myUsername, status: 'playing' });
+        tttGameId = id;
+        tttMyMark = 'O';
+        document.getElementById('ttt-players').textContent = `${games[id].p1} (X) vs ${myUsername} (O)`;
+        document.getElementById('ttt-status').textContent = "X's turn";
+      } else {
+        const newRef = m.push(m.ref(database, 'ttt_games'));
+        m.set(newRef, { p1: myUsername, p2: null, board: Array(9).fill(''), turn: 'X', status: 'waiting', ts: Date.now() });
+        tttGameId = newRef.key;
+        tttMyMark = 'X';
+        document.getElementById('ttt-status').textContent = 'Waiting for opponent…';
+      }
+      listenTTT();
+    });
   });
 }
 
 function listenTTT() {
-  if (!firebaseActive || !tttGameId || tttGameId.startsWith('local')) return;
-  db.ref('ttt_games/' + tttGameId).on('value', snap => {
-    const g = snap.val();
-    if (!g) return;
-    tttBoard = g.board || Array(9).fill('');
-    tttCurrent = g.turn;
-    const isMyTurn = tttCurrent === tttMyMark;
-    if (g.p2) document.getElementById('ttt-players').textContent = `${g.p1} (X) vs ${g.p2} (O)`;
-    document.getElementById('ttt-status').textContent = g.winner ? (g.winner === 'draw' ? 'Draw!' : `${g.winner} wins! 🎉`) : (isMyTurn ? 'Your turn!' : `${tttCurrent}'s turn`);
-    tttOver = !!g.winner;
-    tttRender(g.winLine);
+  if (!tttGameId || tttGameId.startsWith('local')) return;
+  import("https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js").then(m => {
+    m.onValue(m.ref(database, 'ttt_games/' + tttGameId), snap => {
+      const g = snap.val();
+      if (!g) return;
+      tttBoard = g.board || Array(9).fill('');
+      tttCurrent = g.turn;
+      const isMyTurn = tttCurrent === tttMyMark;
+      if (g.p2) document.getElementById('ttt-players').textContent = `${g.p1} (X) vs ${g.p2} (O)`;
+      document.getElementById('ttt-status').textContent = g.winner ? (g.winner === 'draw' ? 'Draw!' : `${g.winner} wins! 🎉`) : (isMyTurn ? 'Your turn!' : `${tttCurrent}'s turn`);
+      tttOver = !!g.winner;
+      tttRender(g.winLine);
+    });
   });
 }
 
@@ -1015,7 +1036,7 @@ function tttRender(winLine) {
 
 function tttMove(i) {
   if (tttOver || tttBoard[i]) return;
-  if (firebaseActive && tttGameId && !tttGameId.startsWith('local')) {
+  if (tttGameId && !tttGameId.startsWith('local')) {
     if (tttCurrent !== tttMyMark) return;
     const newBoard = [...tttBoard];
     newBoard[i] = tttCurrent;
@@ -1083,7 +1104,7 @@ function c4NewGame() {
 }
 function c4Drop(col) {
   if (c4Over) return;
-  if (firebaseActive && c4GameId && !c4GameId.startsWith('local')) {
+  if (c4GameId && !c4GameId.startsWith('local')) {
     if (c4Turn !== c4MyPlayer) return;
     const b = c4Board.map(r=>[...r]);
     let row = -1;
@@ -1497,6 +1518,23 @@ function bsRenderGame() {
     }
   }
 }
+
+// ── EXPOSE FUNCTIONS TO WINDOW (required for onclick= in module scripts) ────
+window.joinApp = joinApp;
+window.sendChat = sendChat;
+window.switchPanel = switchPanel;
+window.tttNewGame = tttNewGame;
+window.c4NewGame = c4NewGame;
+window.c4Drop = c4Drop;
+window.rpsVsCpu = rpsVsCpu;
+window.rpsPick = rpsPick;
+window.wdGuess = wdGuess;
+window.wdNewGame = wdNewGame;
+window.trNewRace = trNewRace;
+window.bsRotate = bsRotate;
+window.bsSelectShip = bsSelectShip;
+window.bsRandomPlace = bsRandomPlace;
+window.bsStartGame = bsStartGame;
 </script>
 </body>
 </html>
